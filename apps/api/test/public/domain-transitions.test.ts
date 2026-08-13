@@ -115,7 +115,11 @@ describe("decideTransition: initial approval", () => {
 
   it("refuses an initial approval on an application awaiting confirmation", () => {
     const result = decideTransition(
-      application({ status: "PENDING_CONFIRMATION", approvedAmountMinor: 1_500_000, proposedById: ADA }),
+      application({
+        status: "PENDING_CONFIRMATION",
+        approvedAmountMinor: 1_500_000,
+        proposedById: ADA,
+      }),
       { decision: "APPROVED", approvedAmountMinor: 1_500_000, reason },
       GRACE,
     );
@@ -133,7 +137,11 @@ describe("decideTransition: confirmation", () => {
     });
 
   it("lets a different underwriter confirm, preserving the proposed amount", () => {
-    const result = decideTransition(pendingConfirmation(), { decision: "CONFIRMED", reason }, GRACE);
+    const result = decideTransition(
+      pendingConfirmation(),
+      { decision: "CONFIRMED", reason },
+      GRACE,
+    );
 
     expect(result).toEqual({
       ok: true,
@@ -188,7 +196,11 @@ describe("decideTransition: rejection", () => {
 
   it("lets the original proposer reject from PENDING_CONFIRMATION, clearing the amount", () => {
     const result = decideTransition(
-      application({ status: "PENDING_CONFIRMATION", approvedAmountMinor: 1_500_000, proposedById: ADA }),
+      application({
+        status: "PENDING_CONFIRMATION",
+        approvedAmountMinor: 1_500_000,
+        proposedById: ADA,
+      }),
       { decision: "REJECTED", reason },
       ADA,
     );

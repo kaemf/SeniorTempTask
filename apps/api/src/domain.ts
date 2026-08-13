@@ -2,10 +2,7 @@ import type { LoanNotificationType, LoanNotifier } from "./notifier.js";
 
 export type UserRole = "UNDERWRITER" | "SUPPORT";
 export type LoanApplicationStatus =
-  | "PENDING_REVIEW"
-  | "PENDING_CONFIRMATION"
-  | "APPROVED"
-  | "REJECTED";
+  "PENDING_REVIEW" | "PENDING_CONFIRMATION" | "APPROVED" | "REJECTED";
 export type DecisionCommand = "APPROVED" | "REJECTED" | "CONFIRMED";
 
 /** Approvals above this amount (in minor units) require independent confirmation. */

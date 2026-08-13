@@ -70,8 +70,11 @@ export class InMemoryLoanRepository implements LoanRepository {
 }
 
 export class CapturingLogger implements AppLogger {
-  events: Array<{ level: "info" | "warn" | "error"; context: Record<string, unknown>; message: string }> =
-    [];
+  events: Array<{
+    level: "info" | "warn" | "error";
+    context: Record<string, unknown>;
+    message: string;
+  }> = [];
 
   info(context: Record<string, unknown>, message: string): void {
     this.events.push({ level: "info", context: clone(context), message });
