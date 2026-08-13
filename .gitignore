@@ -10,3 +10,8 @@ coverage/
 generated
 *.tsbuildinfo
 .DS_Store
+.claude/
+
+# Next.js generated agent-rules files
+apps/web/AGENTS.md
+apps/web/CLAUDE.md

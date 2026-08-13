@@ -273,3 +273,56 @@ describe("decide: failure semantics", () => {
     expect(logger.events.some((event) => event.level === "warn")).toBe(true);
   });
 });
+
+describe("decide: concurrent confirmations", () => {
+  it("allows exactly one of two concurrent confirmations of the same proposal", async () => {
+    const repository = new InMemoryLoanRepository();
+    repository.application.requestedAmountMinor = 2_000_000;
+    repository.application.status = "PENDING_CONFIRMATION";
+    repository.application.approvedAmountMinor = HIGH_VALUE;
+    repository.application.proposedById = "user-underwriter-3";
+    const notifier = new CapturingNotifier();
+    const adaCaller = appRouter.createCaller(
+      createTestContext(repository, underwriter, new CapturingLogger(), notifier),
+    );
+    const graceCaller = appRouter.createCaller(
+      createTestContext(repository, secondUnderwriter, new CapturingLogger(), notifier),
+    );
+    const confirmation = {
+      applicationId: "app-pending",
+      decision: "CONFIRMED",
+      reason: "Independent verification complete",
+    } as const;
+
+    const results = await Promise.allSettled([
+      adaCaller.loanApplications.decide(confirmation),
+      graceCaller.loanApplications.decide(confirmation),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ reason: { code: "CONFLICT" } });
+    expect(repository.application.status).toBe("APPROVED");
+    expect(repository.application.approvedAmountMinor).toBe(HIGH_VALUE);
+    expect(repository.audits).toHaveLength(1);
+    expect(notifier.sent).toEqual([{ applicationId: "app-pending", type: "APPROVED" }]);
+  });
+});
+
+describe("read access", () => {
+  it("lets a support agent list and view applications", async () => {
+    const caller = appRouter.createCaller(
+      createTestContext(new InMemoryLoanRepository(), supportAgent),
+    );
+
+    const list = await caller.loanApplications.list();
+    expect(list).toHaveLength(1);
+
+    const view = await caller.loanApplications.getForReview({ applicationId: "app-pending" });
+    expect(view.id).toBe("app-pending");
+    expect(view.customer).not.toHaveProperty("nationalId");
+    expect(view.customer).not.toHaveProperty("phone");
+  });
+});

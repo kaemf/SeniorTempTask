@@ -257,3 +257,15 @@ describe("decideTransition: terminal states", () => {
     },
   );
 });
+
+describe("decideTransition: reason", () => {
+  it("refuses a whitespace-only reason independently of transport validation", () => {
+    const result = decideTransition(application(), { decision: "REJECTED", reason: "   " }, ADA);
+
+    expect(result).toEqual({
+      ok: false,
+      code: "BAD_REQUEST",
+      message: "A reason is required",
+    });
+  });
+});

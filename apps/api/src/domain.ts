@@ -50,13 +50,6 @@ export interface LoanApplicationView {
   };
 }
 
-export interface DecideLoanApplicationInput {
-  applicationId: string;
-  decision: DecisionCommand;
-  approvedAmountMinor?: number | undefined;
-  reason: string;
-}
-
 export interface AuditRecordInput {
   applicationId: string;
   actorId: string;
@@ -107,6 +100,16 @@ export function decideTransition(
     };
   }
 
+  // Re-checked here so the state machine is self-contained even when the
+  // transport-level schema validation is bypassed (e.g. direct calls in tests).
+  if (input.reason.trim().length === 0) {
+    return {
+      ok: false,
+      code: "BAD_REQUEST",
+      message: "A reason is required",
+    };
+  }
+
   if (input.decision === "REJECTED") {
     if (input.approvedAmountMinor !== undefined) {
       return {
@@ -119,6 +122,9 @@ export function decideTransition(
       ok: true,
       newStatus: "REJECTED",
       approvedAmountMinor: null,
+      // The proposal is no longer active, so the live pointer is cleared;
+      // who proposed it stays reconstructable from the audit trail. Confirmed
+      // approvals keep proposedById as provenance on the final row.
       proposedById: null,
       expectedStatus: application.status,
       notification: "REJECTED",

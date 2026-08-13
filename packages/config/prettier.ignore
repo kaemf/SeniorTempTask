@@ -6,3 +6,6 @@ dist
 coverage
 generated
 pnpm-lock.yaml
+.claude
+AGENTS.md
+CLAUDE.md
