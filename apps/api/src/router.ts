@@ -5,7 +5,14 @@ import { z } from "zod";
 import type { LoanApplicationRecord, LoanApplicationView, RequestContext } from "./domain.js";
 import { decideTransition, MAX_AMOUNT_MINOR } from "./domain.js";
 
-const t = initTRPC.context<RequestContext>().create({ transformer: superjson });
+const t = initTRPC.context<RequestContext>().create({
+  transformer: superjson,
+  // Never leak stack traces or other internals to clients, regardless of NODE_ENV.
+  errorFormatter({ shape }) {
+    const { stack: _stack, ...data } = shape.data;
+    return { ...shape, data };
+  },
+});
 
 const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.session) {
