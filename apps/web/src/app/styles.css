@@ -89,7 +89,21 @@ h2 {
   color: #155d38;
 }
 
-.status-rejected,
+.status-rejected {
+  background: #fbe3e3;
+  color: #9b2c2c;
+}
+
+.status-pending_review {
+  background: #dde9f8;
+  color: #1d4f91;
+}
+
+.status-pending_confirmation {
+  background: #ece4f7;
+  color: #5b3a9b;
+}
+
 .error {
   color: #9b2c2c;
 }
@@ -202,6 +216,21 @@ a:focus-visible {
   color: var(--muted);
   font-weight: 650;
   white-space: nowrap;
+}
+
+.refresh-notice {
+  background: #fff1c9;
+  border: 1px solid #e3cf8c;
+  border-radius: 8px;
+  color: #6f5200;
+  font-size: 0.9rem;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+}
+
+.empty-state {
+  color: var(--muted);
+  text-align: center;
 }
 
 .table-wrap {

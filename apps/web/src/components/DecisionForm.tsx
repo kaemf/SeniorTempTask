@@ -21,6 +21,13 @@ interface DecisionFormProps {
 const AMOUNT_PATTERN = /^\d+([.,]\d{1,2})?$/;
 
 /**
+ * Largest amount (in minor units) the server can store — it persists amounts
+ * in a 32-bit integer column (see MAX_AMOUNT_MINOR in the api package).
+ * Kept as a local constant so the client bundle does not import server code.
+ */
+const MAX_AMOUNT_MINOR = 2_147_483_647;
+
+/**
  * Parses a user-entered amount ("1250.50", "12,50", "10") into integer minor
  * units using string arithmetic only — no floating point. Returns null when
  * the input is not a plain positive decimal with at most two decimal places.
@@ -56,6 +63,7 @@ export function DecisionForm({
   const [reason, setReason] = useState("");
   const [amountError, setAmountError] = useState<string | null>(null);
   const [reasonError, setReasonError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const amountErrorId = useId();
@@ -71,8 +79,27 @@ export function DecisionForm({
 
   const showAmountField = mode === "initial" && choice === "POSITIVE";
 
+  function selectChoice(next: Choice) {
+    setChoice(next);
+    // A different decision invalidates previously reported field errors;
+    // keeping them would resurface a stale alert (e.g. Reject → Approve
+    // remounting the amount field with last submit's error).
+    setAmountError(null);
+    setReasonError(null);
+    setFormError(null);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    // Defense in depth: the effect above normally flips the selection away
+    // from a disabled Confirm, but a submit can land in the window between
+    // paint and that effect. Never build a CONFIRMED decision in that case.
+    if (confirmUnavailable && choice === "POSITIVE") {
+      setFormError("Confirming this application is unavailable. Choose Reject instead.");
+      return;
+    }
+    setFormError(null);
 
     let parsedAmountMinor: number | null = null;
     let nextAmountError: string | null = null;
@@ -81,10 +108,16 @@ export function DecisionForm({
     if (showAmountField) {
       parsedAmountMinor = parseAmountToMinorUnits(approvedAmount);
       if (parsedAmountMinor === null) {
-        nextAmountError =
-          "Enter a valid amount, e.g. 1250.50 — digits with at most two decimal places.";
+        // The parser also returns null for well-formed numbers whose minor
+        // units overflow the safe-integer range — report those as magnitude,
+        // not format, problems.
+        nextAmountError = AMOUNT_PATTERN.test(approvedAmount.trim())
+          ? "Amount is too large."
+          : "Enter a valid amount, e.g. 1250.50 — digits with at most two decimal places.";
       } else if (parsedAmountMinor <= 0) {
         nextAmountError = "The approved amount must be greater than zero.";
+      } else if (parsedAmountMinor > MAX_AMOUNT_MINOR) {
+        nextAmountError = "Amount is too large.";
       } else if (parsedAmountMinor > requestedAmountMinor) {
         nextAmountError = `The approved amount cannot exceed the requested amount (${formatMoney(
           requestedAmountMinor,
@@ -131,7 +164,7 @@ export function DecisionForm({
             checked={choice === "POSITIVE"}
             disabled={confirmUnavailable}
             name="decision"
-            onChange={() => setChoice("POSITIVE")}
+            onChange={() => selectChoice("POSITIVE")}
             type="radio"
             value={positiveDecision}
           />
@@ -141,7 +174,7 @@ export function DecisionForm({
           <input
             checked={choice === "REJECTED"}
             name="decision"
-            onChange={() => setChoice("REJECTED")}
+            onChange={() => selectChoice("REJECTED")}
             type="radio"
             value="REJECTED"
           />
@@ -157,7 +190,12 @@ export function DecisionForm({
                 aria-describedby={amountError !== null ? amountErrorId : undefined}
                 aria-invalid={amountError !== null || undefined}
                 inputMode="decimal"
-                onChange={(event) => setApprovedAmount(event.target.value)}
+                onChange={(event) => {
+                  setApprovedAmount(event.target.value);
+                  // The reported error described a previous value; editing
+                  // the field makes it stale.
+                  setAmountError(null);
+                }}
                 required
                 type="text"
                 value={approvedAmount}
@@ -176,7 +214,10 @@ export function DecisionForm({
           <textarea
             aria-describedby={reasonError !== null ? reasonErrorId : undefined}
             aria-invalid={reasonError !== null || undefined}
-            onChange={(event) => setReason(event.target.value)}
+            onChange={(event) => {
+              setReason(event.target.value);
+              setReasonError(null);
+            }}
             required
             rows={4}
             value={reason}
@@ -185,6 +226,12 @@ export function DecisionForm({
         {reasonError !== null ? (
           <p className="error" id={reasonErrorId} role="alert">
             {reasonError}
+          </p>
+        ) : null}
+
+        {formError !== null ? (
+          <p className="error" role="alert">
+            {formError}
           </p>
         ) : null}
 

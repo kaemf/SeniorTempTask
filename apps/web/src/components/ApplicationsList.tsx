@@ -72,16 +72,24 @@ export function ApplicationsList() {
   const [pageIndex, setPageIndex] = useState(0);
   const pageSize = 2;
   const applications = applicationsQuery.data ?? [];
-  const pageCount = Math.ceil(applications.length / pageSize);
+  // At least one page, so an empty list renders "Page 1 of 1" rather than "of 0".
+  const pageCount = Math.max(1, Math.ceil(applications.length / pageSize));
+  // Derive a clamped index instead of resetting state in an effect: when the
+  // data shrinks (refetch, deletion) the stored index may point past the last
+  // page, and deriving avoids the extra render an effect reset would cause.
+  const safePageIndex = Math.min(pageIndex, pageCount - 1);
   const pageApplications = useMemo(
-    () => applications.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
-    [applications, pageIndex],
+    () => applications.slice(safePageIndex * pageSize, (safePageIndex + 1) * pageSize),
+    [applications, safePageIndex],
   );
 
   const table = useReactTable({
     data: pageApplications,
     columns,
     getCoreRowModel: getCoreRowModel(),
+    // Key selection by application id, not array index, so selection cannot
+    // migrate to a different application across pages or refetches.
+    getRowId: (row) => row.id,
     manualPagination: true,
     pageCount,
     state: { rowSelection },
@@ -92,7 +100,9 @@ export function ApplicationsList() {
     return <main className="shell applications-shell">Loading applications…</main>;
   }
 
-  if (applicationsQuery.isError) {
+  // Only blank the page when we have nothing to show. A failed background
+  // refetch (polling every 5s) must not unmount a table that has data.
+  if (applicationsQuery.isError && applicationsQuery.data === undefined) {
     return (
       <main className="shell applications-shell" role="alert">
         Could not load applications: {applicationsQuery.error.message}
@@ -111,6 +121,12 @@ export function ApplicationsList() {
         <span className="selection-count">{Object.keys(rowSelection).length} selected</span>
       </div>
 
+      {applicationsQuery.isError ? (
+        <p className="refresh-notice" role="alert">
+          Live updates are temporarily unavailable.
+        </p>
+      ) : null}
+
       <div className="table-wrap">
         <table>
           <thead>
@@ -127,31 +143,41 @@ export function ApplicationsList() {
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr data-selected={row.getIsSelected() || undefined} key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-                ))}
+            {table.getRowModel().rows.length === 0 ? (
+              <tr>
+                <td className="empty-state" colSpan={columns.length}>
+                  No applications
+                </td>
               </tr>
-            ))}
+            ) : (
+              table.getRowModel().rows.map((row) => (
+                <tr data-selected={row.getIsSelected() || undefined} key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
 
       <div className="pagination">
         <button
-          disabled={pageIndex === 0}
-          onClick={() => setPageIndex((current) => current - 1)}
+          disabled={safePageIndex === 0}
+          onClick={() => setPageIndex(safePageIndex - 1)}
           type="button"
         >
           Previous
         </button>
         <span>
-          Page {pageIndex + 1} of {pageCount}
+          Page {safePageIndex + 1} of {pageCount}
         </span>
         <button
-          disabled={pageIndex + 1 >= pageCount}
-          onClick={() => setPageIndex((current) => current + 1)}
+          disabled={safePageIndex + 1 >= pageCount}
+          onClick={() => setPageIndex(safePageIndex + 1)}
           type="button"
         >
           Next
