@@ -15,6 +15,12 @@ import { trpc } from "@/lib/trpc";
 
 const columnHelper = createColumnHelper<LoanApplicationView>();
 
+/** Presentation-only alignment/typography per column (keyed by column id). */
+const columnClassNames: Record<string, string> = {
+  requestedAmountMinor: "col-num",
+  customer_taxId: "col-mono",
+};
+
 function formatMoney(minor: number) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(minor / 100);
 }
@@ -133,7 +139,7 @@ export function ApplicationsList() {
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th key={header.id} scope="col">
+                  <th className={columnClassNames[header.column.id]} key={header.id} scope="col">
                     {header.isPlaceholder
                       ? null
                       : flexRender(header.column.columnDef.header, header.getContext())}
@@ -153,7 +159,7 @@ export function ApplicationsList() {
               table.getRowModel().rows.map((row) => (
                 <tr data-selected={row.getIsSelected() || undefined} key={row.id}>
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id}>
+                    <td className={columnClassNames[cell.column.id]} key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

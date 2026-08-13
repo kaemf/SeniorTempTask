@@ -6,7 +6,7 @@ import "./styles.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Loan review workbench",
+  title: "Loan Review Workbench",
   description: "Manual underwriting decision workspace",
 };
 

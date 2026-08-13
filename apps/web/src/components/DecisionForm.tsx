@@ -159,27 +159,29 @@ export function DecisionForm({
     <form className="decision-form" noValidate onSubmit={(event) => void handleSubmit(event)}>
       <fieldset disabled={disabled || submitting}>
         <legend>Decision</legend>
-        <label className="radio-row">
-          <input
-            checked={choice === "POSITIVE"}
-            disabled={confirmUnavailable}
-            name="decision"
-            onChange={() => selectChoice("POSITIVE")}
-            type="radio"
-            value={positiveDecision}
-          />
-          {positiveLabel}
-        </label>
-        <label className="radio-row">
-          <input
-            checked={choice === "REJECTED"}
-            name="decision"
-            onChange={() => selectChoice("REJECTED")}
-            type="radio"
-            value="REJECTED"
-          />
-          Reject
-        </label>
+        <div className="choice-group">
+          <label className="radio-row">
+            <input
+              checked={choice === "POSITIVE"}
+              disabled={confirmUnavailable}
+              name="decision"
+              onChange={() => selectChoice("POSITIVE")}
+              type="radio"
+              value={positiveDecision}
+            />
+            {positiveLabel}
+          </label>
+          <label className="radio-row">
+            <input
+              checked={choice === "REJECTED"}
+              name="decision"
+              onChange={() => selectChoice("REJECTED")}
+              type="radio"
+              value="REJECTED"
+            />
+            Reject
+          </label>
+        </div>
 
         {showAmountField ? (
           <label>

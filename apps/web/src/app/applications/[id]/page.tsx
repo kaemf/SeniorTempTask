@@ -143,13 +143,13 @@ function ApplicationReview() {
       </section>
 
       {successMessage !== null ? (
-        <p className="notice" role="status" aria-live="polite">
+        <p className="notice notice-success" role="status" aria-live="polite">
           {successMessage}
         </p>
       ) : null}
 
       {item.status === "PENDING_REVIEW" ? (
-        <section aria-labelledby="record-decision">
+        <section aria-labelledby="record-decision" className="decision-section">
           <h2 id="record-decision">Record a decision</h2>
           <DecisionForm
             disabled={decide.isPending}
@@ -160,9 +160,9 @@ function ApplicationReview() {
       ) : null}
 
       {item.status === "PENDING_CONFIRMATION" ? (
-        <section aria-labelledby="confirm-decision">
+        <section aria-labelledby="confirm-decision" className="decision-section">
           <h2 id="confirm-decision">Confirm or reject the proposed approval</h2>
-          <dl>
+          <dl className="facts">
             <div>
               <dt>Proposed amount</dt>
               <dd>
@@ -207,7 +207,7 @@ function ApplicationReview() {
       ) : null}
 
       {errorMessage !== null ? (
-        <p className="error" role="alert" aria-live="assertive">
+        <p className="notice notice-error" role="alert" aria-live="assertive">
           {errorMessage}
         </p>
       ) : null}
