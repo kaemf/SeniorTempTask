@@ -9,7 +9,8 @@ const t = initTRPC.context<RequestContext>().create({
   transformer: superjson,
   // Never leak stack traces or other internals to clients, regardless of NODE_ENV.
   errorFormatter({ shape }) {
-    const { stack: _stack, ...data } = shape.data;
+    const data = { ...shape.data };
+    delete data.stack;
     return { ...shape, data };
   },
 });
