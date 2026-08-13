@@ -1,37 +1,121 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 
-export interface DecisionFormValue {
-  decision: "APPROVED" | "REJECTED";
-  approvedAmountMinor?: number;
-  reason: string;
-}
+export type DecisionFormValue =
+  | { decision: "APPROVED"; approvedAmountMinor: number; reason: string }
+  | { decision: "REJECTED"; reason: string }
+  | { decision: "CONFIRMED"; reason: string };
+
+export type DecisionFormMode = "initial" | "confirmation";
 
 interface DecisionFormProps {
   requestedAmountMinor: number;
+  mode?: DecisionFormMode;
   disabled?: boolean;
+  /** Confirmation mode only: disable the Confirm option (e.g. the viewer proposed the approval). */
+  disableConfirm?: boolean;
   onSubmit(value: DecisionFormValue): Promise<void> | void;
+}
+
+const AMOUNT_PATTERN = /^\d+([.,]\d{1,2})?$/;
+
+/**
+ * Parses a user-entered amount ("1250.50", "12,50", "10") into integer minor
+ * units using string arithmetic only — no floating point. Returns null when
+ * the input is not a plain positive decimal with at most two decimal places.
+ */
+export function parseAmountToMinorUnits(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!AMOUNT_PATTERN.test(trimmed)) {
+    return null;
+  }
+  const [wholePart = "", fractionPart = ""] = trimmed.split(/[.,]/);
+  const minor = Number(wholePart + fractionPart.padEnd(2, "0"));
+  return Number.isSafeInteger(minor) ? minor : null;
+}
+
+function formatMoney(minor: number): string {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(minor / 100);
 }
 
 export function DecisionForm({
   requestedAmountMinor,
+  mode = "initial",
   disabled = false,
+  disableConfirm = false,
   onSubmit,
 }: DecisionFormProps) {
-  const [decision, setDecision] = useState<DecisionFormValue["decision"]>("APPROVED");
+  type Choice = "POSITIVE" | "REJECTED";
+  const positiveDecision = mode === "confirmation" ? "CONFIRMED" : "APPROVED";
+  const positiveLabel = mode === "confirmation" ? "Confirm" : "Approve";
+  const confirmUnavailable = mode === "confirmation" && disableConfirm;
+
+  const [choice, setChoice] = useState<Choice>(confirmUnavailable ? "REJECTED" : "POSITIVE");
   const [approvedAmount, setApprovedAmount] = useState("");
   const [reason, setReason] = useState("");
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [reasonError, setReasonError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const amountErrorId = useId();
+  const reasonErrorId = useId();
+
+  // disableConfirm can change after mount (the acting user is resolved from
+  // localStorage in an effect); never leave the disabled option selected.
+  useEffect(() => {
+    if (confirmUnavailable) {
+      setChoice("REJECTED");
+    }
+  }, [confirmUnavailable]);
+
+  const showAmountField = mode === "initial" && choice === "POSITIVE";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    let parsedAmountMinor: number | null = null;
+    let nextAmountError: string | null = null;
+    let nextReasonError: string | null = null;
+
+    if (showAmountField) {
+      parsedAmountMinor = parseAmountToMinorUnits(approvedAmount);
+      if (parsedAmountMinor === null) {
+        nextAmountError =
+          "Enter a valid amount, e.g. 1250.50 — digits with at most two decimal places.";
+      } else if (parsedAmountMinor <= 0) {
+        nextAmountError = "The approved amount must be greater than zero.";
+      } else if (parsedAmountMinor > requestedAmountMinor) {
+        nextAmountError = `The approved amount cannot exceed the requested amount (${formatMoney(
+          requestedAmountMinor,
+        )}).`;
+      }
+    }
+
+    if (reason.trim().length === 0) {
+      nextReasonError = "A reason is required for every decision.";
+    }
+
+    setAmountError(nextAmountError);
+    setReasonError(nextReasonError);
+    if (nextAmountError !== null || nextReasonError !== null) {
+      return;
+    }
+
+    let value: DecisionFormValue;
+    if (choice === "REJECTED") {
+      value = { decision: "REJECTED", reason };
+    } else if (positiveDecision === "CONFIRMED") {
+      value = { decision: "CONFIRMED", reason };
+    } else {
+      if (parsedAmountMinor === null) {
+        return;
+      }
+      value = { decision: "APPROVED", approvedAmountMinor: parsedAmountMinor, reason };
+    }
+
     setSubmitting(true);
     try {
-      const value: DecisionFormValue =
-        decision === "APPROVED"
-          ? { decision, approvedAmountMinor: Math.round(Number(approvedAmount) * 100), reason }
-          : { decision, reason };
       await onSubmit(value);
     } finally {
       setSubmitting(false);
@@ -39,59 +123,70 @@ export function DecisionForm({
   }
 
   return (
-    <form className="decision-form" onSubmit={(event) => void handleSubmit(event)}>
+    <form className="decision-form" noValidate onSubmit={(event) => void handleSubmit(event)}>
       <fieldset disabled={disabled || submitting}>
         <legend>Decision</legend>
         <label className="radio-row">
           <input
-            checked={decision === "APPROVED"}
+            checked={choice === "POSITIVE"}
+            disabled={confirmUnavailable}
             name="decision"
-            onChange={() => setDecision("APPROVED")}
+            onChange={() => setChoice("POSITIVE")}
             type="radio"
-            value="APPROVED"
+            value={positiveDecision}
           />
-          Approve
+          {positiveLabel}
         </label>
         <label className="radio-row">
           <input
-            checked={decision === "REJECTED"}
+            checked={choice === "REJECTED"}
             name="decision"
-            onChange={() => setDecision("REJECTED")}
+            onChange={() => setChoice("REJECTED")}
             type="radio"
             value="REJECTED"
           />
           Reject
         </label>
 
-        {decision === "APPROVED" ? (
+        {showAmountField ? (
           <label>
             Approved amount
             <span className="input-affix">
               <span aria-hidden="true">€</span>
               <input
+                aria-describedby={amountError !== null ? amountErrorId : undefined}
+                aria-invalid={amountError !== null || undefined}
                 inputMode="decimal"
-                max={(requestedAmountMinor / 100).toFixed(2)}
-                min="0.01"
                 onChange={(event) => setApprovedAmount(event.target.value)}
                 required
-                step="0.01"
-                type="number"
+                type="text"
                 value={approvedAmount}
               />
             </span>
           </label>
         ) : null}
+        {showAmountField && amountError !== null ? (
+          <p className="error" id={amountErrorId} role="alert">
+            {amountError}
+          </p>
+        ) : null}
 
         <label>
           Reason
           <textarea
-            minLength={1}
+            aria-describedby={reasonError !== null ? reasonErrorId : undefined}
+            aria-invalid={reasonError !== null || undefined}
             onChange={(event) => setReason(event.target.value)}
             required
             rows={4}
             value={reason}
           />
         </label>
+        {reasonError !== null ? (
+          <p className="error" id={reasonErrorId} role="alert">
+            {reasonError}
+          </p>
+        ) : null}
 
         <button className="primary-button" type="submit">
           {submitting ? "Saving…" : "Record decision"}

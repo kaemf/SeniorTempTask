@@ -5,6 +5,8 @@ import { httpBatchLink } from "@trpc/client";
 import { useState, type ReactNode } from "react";
 import superjson from "superjson";
 
+import { UserSwitcher } from "@/components/UserSwitcher";
+import { getDevUser } from "@/lib/devUser";
 import { trpc } from "@/lib/trpc";
 
 export function Providers({ children }: Readonly<{ children: ReactNode }>) {
@@ -15,6 +17,14 @@ export function Providers({ children }: Readonly<{ children: ReactNode }>) {
         httpBatchLink({
           transformer: superjson,
           url: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/trpc",
+          headers() {
+            // Resolved per request so a user switch takes effect immediately.
+            const user = getDevUser();
+            return {
+              "x-user-id": user.id,
+              "x-user-role": user.role,
+            };
+          },
         }),
       ],
     }),
@@ -22,7 +32,10 @@ export function Providers({ children }: Readonly<{ children: ReactNode }>) {
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <UserSwitcher />
+        {children}
+      </QueryClientProvider>
     </trpc.Provider>
   );
 }
