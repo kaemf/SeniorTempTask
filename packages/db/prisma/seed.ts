@@ -98,6 +98,30 @@ async function main() {
       monthlyIncomeMinor: 600_000,
     },
   });
+
+  await prisma.loanApplication.upsert({
+    where: { id: "app-pending-confirmation" },
+    update: {
+      customerLastName: "Fixture",
+      customerGender: "FEMALE",
+      customerTaxId: "TAX-PENDING-CONF",
+    },
+    create: {
+      id: "app-pending-confirmation",
+      status: LoanApplicationStatus.PENDING_CONFIRMATION,
+      requestedAmountMinor: 2_500_000,
+      approvedAmountMinor: 1_500_000,
+      proposedById: "user-underwriter-1",
+      customerFullName: "Pending Confirmation Fixture",
+      customerLastName: "Fixture",
+      customerGender: "FEMALE",
+      customerTaxId: "TAX-PENDING-CONF",
+      customerEmail: "pending-confirmation@example.test",
+      customerPhone: "+380500000004",
+      customerNationalId: "ID-PENDING-CONF",
+      monthlyIncomeMinor: 750_000,
+    },
+  });
 }
 
 main()
