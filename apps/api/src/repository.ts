@@ -2,6 +2,7 @@ import type {
   LoanApplicationStatus as PrismaLoanApplicationStatus,
   PrismaClient,
 } from "@loan-review/db";
+import { Prisma } from "@loan-review/db";
 
 import type {
   ApplyDecisionParams,
@@ -59,7 +60,29 @@ export class PrismaLoanRepository implements LoanRepository {
     return applications.map(toRecord);
   }
 
-  async applyDecision(params: ApplyDecisionParams): Promise<LoanApplicationRecord | "CONFLICT"> {
+  async applyDecision(
+    params: ApplyDecisionParams,
+  ): Promise<LoanApplicationRecord | "CONFLICT" | "UNKNOWN_ACTOR"> {
+    let result: LoanApplicationRecord | "CONFLICT";
+    try {
+      result = await this.runDecisionTransaction(params);
+    } catch (error) {
+      // A foreign-key violation (P2003) inside the transaction means the
+      // session user does not exist in the User table: both user references
+      // written here (the audit actorId and the proposer proposedById) come
+      // from the acting session. The throw already aborted the transaction,
+      // so the status update was rolled back and no audit row remains.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+        return "UNKNOWN_ACTOR";
+      }
+      throw error;
+    }
+    return result;
+  }
+
+  private async runDecisionTransaction(
+    params: ApplyDecisionParams,
+  ): Promise<LoanApplicationRecord | "CONFLICT"> {
     const result = await this.client.$transaction(async (tx) => {
       // The conditional updateMany is the optimistic lock: it only matches while
       // the application is still in the state the decision was computed against.

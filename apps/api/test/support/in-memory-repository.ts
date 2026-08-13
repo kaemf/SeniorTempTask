@@ -35,6 +35,12 @@ export class InMemoryLoanRepository implements LoanRepository {
   application = clone(seededApplication);
   audits: AuditRecordInput[] = [];
   failNextAudit = false;
+  /**
+   * When non-null, mirrors the database's actor foreign key: a decision by an
+   * actor outside this set fails as "UNKNOWN_ACTOR" with every write rolled
+   * back. Null (the default) means every actor is known.
+   */
+  knownActorIds: Set<string> | null = null;
 
   async findApplication(id: string): Promise<LoanApplicationRecord | null> {
     return id === this.application.id ? clone(this.application) : null;
@@ -48,12 +54,18 @@ export class InMemoryLoanRepository implements LoanRepository {
   // write: no awaits, so interleaved calls cannot observe a half-applied
   // decision. This mirrors the transactional conditional update in the real
   // Prisma repository and makes concurrency tests meaningful.
-  async applyDecision(params: ApplyDecisionParams): Promise<LoanApplicationRecord | "CONFLICT"> {
+  async applyDecision(
+    params: ApplyDecisionParams,
+  ): Promise<LoanApplicationRecord | "CONFLICT" | "UNKNOWN_ACTOR"> {
     if (params.applicationId !== this.application.id) {
       return "CONFLICT";
     }
     if (this.application.status !== params.expectedStatus) {
       return "CONFLICT";
+    }
+    if (this.knownActorIds !== null && !this.knownActorIds.has(params.audit.actorId)) {
+      // Mirrors the rolled-back FK violation: no state change, no audit row.
+      return "UNKNOWN_ACTOR";
     }
     if (this.failNextAudit) {
       // Atomicity: a failing audit write aborts the whole decision, leaving

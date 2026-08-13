@@ -48,6 +48,26 @@ describe("decide: authentication and authorization", () => {
   });
 });
 
+describe("decide: unknown session actor", () => {
+  it("returns UNAUTHORIZED without state change, audits, or notifications", async () => {
+    const repository = new InMemoryLoanRepository();
+    repository.knownActorIds = new Set(["user-underwriter-2"]);
+    const notifier = new CapturingNotifier();
+    const caller = appRouter.createCaller(
+      createTestContext(repository, underwriter, new CapturingLogger(), notifier),
+    );
+
+    await expect(caller.loanApplications.decide(approvalInput())).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      message: "Session user is not recognized",
+    });
+    expect(repository.application.status).toBe("PENDING_REVIEW");
+    expect(repository.application.approvedAmountMinor).toBeNull();
+    expect(repository.audits).toHaveLength(0);
+    expect(notifier.sent).toHaveLength(0);
+  });
+});
+
 describe("decide: lookup and state conflicts", () => {
   it("returns NOT_FOUND for an unknown application", async () => {
     const caller = appRouter.createCaller(createTestContext());

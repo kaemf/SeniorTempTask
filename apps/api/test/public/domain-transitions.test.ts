@@ -178,6 +178,20 @@ describe("decideTransition: confirmation", () => {
 
     expect(result).toMatchObject({ ok: false, code: "CONFLICT" });
   });
+
+  it("refuses to confirm when no active proposed amount exists", () => {
+    const result = decideTransition(
+      application({ status: "PENDING_CONFIRMATION", approvedAmountMinor: null, proposedById: ADA }),
+      { decision: "CONFIRMED", reason },
+      GRACE,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "Application has no active proposed amount to confirm",
+    });
+  });
 });
 
 describe("decideTransition: rejection", () => {

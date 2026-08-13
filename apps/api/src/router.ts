@@ -4,14 +4,13 @@ import { z } from "zod";
 
 import type { LoanApplicationRecord, LoanApplicationView, RequestContext } from "./domain.js";
 import { decideTransition, MAX_AMOUNT_MINOR } from "./domain.js";
+import { stripErrorStack } from "./trpc-error.js";
 
 const t = initTRPC.context<RequestContext>().create({
   transformer: superjson,
   // Never leak stack traces or other internals to clients, regardless of NODE_ENV.
   errorFormatter({ shape }) {
-    const data = { ...shape.data };
-    delete data.stack;
-    return { ...shape, data };
+    return stripErrorStack(shape);
   },
 });
 
@@ -129,6 +128,12 @@ export const appRouter = t.router({
           });
           if (updated === "CONFLICT") {
             throw new TRPCError({ code: "CONFLICT", message: "Application state has changed" });
+          }
+          if (updated === "UNKNOWN_ACTOR") {
+            throw new TRPCError({
+              code: "UNAUTHORIZED",
+              message: "Session user is not recognized",
+            });
           }
 
           // Post-commit notification: best effort. A delivery failure must never

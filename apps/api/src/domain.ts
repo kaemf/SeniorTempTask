@@ -182,6 +182,16 @@ export function decideTransition(
       message: "Confirmation cannot have an amount",
     };
   }
+  // Data-anomaly guard: confirming carries the previously proposed amount
+  // forward, so a PENDING_CONFIRMATION row without one cannot be approved —
+  // it would finalize an approval with no amount.
+  if (application.approvedAmountMinor === null) {
+    return {
+      ok: false,
+      code: "CONFLICT",
+      message: "Application has no active proposed amount to confirm",
+    };
+  }
   if (application.proposedById !== null && application.proposedById === actorId) {
     return {
       ok: false,
@@ -215,9 +225,14 @@ export interface LoanRepository {
    * Atomically applies a decision: the status update is conditional on
    * `expectedStatus` (optimistic lock) and the audit row is written in the same
    * transaction. Returns "CONFLICT" without writing anything when the
-   * application is no longer in the expected state.
+   * application is no longer in the expected state, and "UNKNOWN_ACTOR" (with
+   * every write rolled back) when the acting user does not exist, so an
+   * unrecognized session yields a clean authorization error instead of an
+   * opaque internal failure.
    */
-  applyDecision(params: ApplyDecisionParams): Promise<LoanApplicationRecord | "CONFLICT">;
+  applyDecision(
+    params: ApplyDecisionParams,
+  ): Promise<LoanApplicationRecord | "CONFLICT" | "UNKNOWN_ACTOR">;
 }
 
 export interface AppLogger {
