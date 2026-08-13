@@ -1,18 +1,20 @@
 import type {
   AppLogger,
+  ApplyDecisionParams,
   AuditRecordInput,
   LoanApplicationRecord,
-  LoanDecision,
   LoanRepository,
   RequestContext,
   SessionUser,
 } from "../../src/domain.js";
+import type { LoanNotification, LoanNotifier } from "../../src/notifier.js";
 
 const seededApplication: LoanApplicationRecord = {
   id: "app-pending",
   status: "PENDING_REVIEW",
   requestedAmountMinor: 500_000,
   approvedAmountMinor: null,
+  proposedById: null,
   customer: {
     fullName: "Olena Kovalenko",
     lastName: "Kovalenko",
@@ -42,46 +44,70 @@ export class InMemoryLoanRepository implements LoanRepository {
     return [clone(this.application)];
   }
 
-  async deleteApplication(id: string): Promise<LoanApplicationRecord> {
-    if (id !== this.application.id) {
-      throw new Error("Application not found");
+  // Deliberately synchronous from the expectedStatus check through the audit
+  // write: no awaits, so interleaved calls cannot observe a half-applied
+  // decision. This mirrors the transactional conditional update in the real
+  // Prisma repository and makes concurrency tests meaningful.
+  async applyDecision(params: ApplyDecisionParams): Promise<LoanApplicationRecord | "CONFLICT"> {
+    if (params.applicationId !== this.application.id) {
+      return "CONFLICT";
     }
-    return clone(this.application);
-  }
-
-  async updateApplication(
-    id: string,
-    decision: LoanDecision,
-    approvedAmountMinor: number | null,
-  ): Promise<LoanApplicationRecord> {
-    if (id !== this.application.id) {
-      throw new Error("Application not found");
+    if (this.application.status !== params.expectedStatus) {
+      return "CONFLICT";
     }
-    this.application.status = decision;
-    this.application.approvedAmountMinor = approvedAmountMinor;
-    return clone(this.application);
-  }
-
-  async createAudit(input: AuditRecordInput): Promise<void> {
     if (this.failNextAudit) {
+      // Atomicity: a failing audit write aborts the whole decision, leaving
+      // the application unchanged and no audit row behind.
       this.failNextAudit = false;
       throw new Error("Injected audit failure");
     }
-    this.audits.push(clone(input));
+    this.application.status = params.newStatus;
+    this.application.approvedAmountMinor = params.approvedAmountMinor;
+    this.application.proposedById = params.proposedById;
+    this.audits.push(clone(params.audit));
+    return clone(this.application);
   }
 }
 
 export class CapturingLogger implements AppLogger {
-  events: Array<{ context: Record<string, unknown>; message: string }> = [];
+  events: Array<{ level: "info" | "warn" | "error"; context: Record<string, unknown>; message: string }> =
+    [];
 
   info(context: Record<string, unknown>, message: string): void {
-    this.events.push({ context: clone(context), message });
+    this.events.push({ level: "info", context: clone(context), message });
+  }
+
+  warn(context: Record<string, unknown>, message: string): void {
+    this.events.push({ level: "warn", context: clone(context), message });
+  }
+
+  error(context: Record<string, unknown>, message: string): void {
+    this.events.push({ level: "error", context: clone(context), message });
+  }
+}
+
+export class CapturingNotifier implements LoanNotifier {
+  sent: LoanNotification[] = [];
+  failNext = false;
+
+  async send(notification: LoanNotification): Promise<void> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("Injected notifier failure");
+    }
+    this.sent.push(clone(notification));
   }
 }
 
 export const underwriter: SessionUser = {
   id: "user-underwriter-1",
   name: "Ada Underwriter",
+  role: "UNDERWRITER",
+};
+
+export const secondUnderwriter: SessionUser = {
+  id: "user-underwriter-2",
+  name: "Grace Underwriter",
   role: "UNDERWRITER",
 };
 
@@ -93,10 +119,11 @@ export const supportAgent: SessionUser = {
 
 export function createTestContext(
   repository = new InMemoryLoanRepository(),
-  user: SessionUser = underwriter,
+  user: SessionUser | null = underwriter,
   logger = new CapturingLogger(),
+  notifier = new CapturingNotifier(),
 ): RequestContext {
-  return { repository, session: { user }, logger };
+  return { repository, session: user ? { user } : null, logger, notifier };
 }
 
 export function approvalInput(overrides: Record<string, unknown> = {}) {

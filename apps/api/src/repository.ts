@@ -1,13 +1,12 @@
-import {
+import type {
   LoanApplicationStatus as PrismaLoanApplicationStatus,
-  type PrismaClient,
+  PrismaClient,
 } from "@loan-review/db";
 
 import type {
-  AuditRecordInput,
+  ApplyDecisionParams,
   LoanApplicationRecord,
   LoanApplicationStatus,
-  LoanDecision,
   LoanRepository,
 } from "./domain.js";
 
@@ -16,6 +15,7 @@ function toRecord(application: {
   status: PrismaLoanApplicationStatus;
   requestedAmountMinor: number;
   approvedAmountMinor: number | null;
+  proposedById: string | null;
   customerFullName: string;
   customerLastName: string;
   customerGender: string;
@@ -30,6 +30,7 @@ function toRecord(application: {
     status: application.status as LoanApplicationStatus,
     requestedAmountMinor: application.requestedAmountMinor,
     approvedAmountMinor: application.approvedAmountMinor,
+    proposedById: application.proposedById,
     customer: {
       fullName: application.customerFullName,
       lastName: application.customerLastName,
@@ -58,39 +59,42 @@ export class PrismaLoanRepository implements LoanRepository {
     return applications.map(toRecord);
   }
 
-  async deleteApplication(id: string): Promise<LoanApplicationRecord> {
-    const application = await this.client.loanApplication.delete({ where: { id } });
-    return toRecord(application);
-  }
+  async applyDecision(params: ApplyDecisionParams): Promise<LoanApplicationRecord | "CONFLICT"> {
+    const result = await this.client.$transaction(async (tx) => {
+      // The conditional updateMany is the optimistic lock: it only matches while
+      // the application is still in the state the decision was computed against.
+      const updated = await tx.loanApplication.updateMany({
+        where: {
+          id: params.applicationId,
+          status: params.expectedStatus as PrismaLoanApplicationStatus,
+        },
+        data: {
+          status: params.newStatus as PrismaLoanApplicationStatus,
+          approvedAmountMinor: params.approvedAmountMinor,
+          proposedById: params.proposedById,
+        },
+      });
 
-  async updateApplication(
-    id: string,
-    decision: LoanDecision,
-    approvedAmountMinor: number | null,
-  ): Promise<LoanApplicationRecord> {
-    const application = await this.client.loanApplication.update({
-      where: { id },
-      data: {
-        status:
-          decision === "APPROVED"
-            ? PrismaLoanApplicationStatus.APPROVED
-            : PrismaLoanApplicationStatus.REJECTED,
-        approvedAmountMinor,
-      },
-    });
-    return toRecord(application);
-  }
+      if (updated.count === 0) {
+        // Lost the race (or the state changed since it was read). Returning early
+        // commits with no writes performed, so no audit row is created.
+        return "CONFLICT" as const;
+      }
 
-  async createAudit(input: AuditRecordInput): Promise<void> {
-    await this.client.loanDecisionAudit.create({
-      data: {
-        applicationId: input.applicationId,
-        actorId: input.actorId,
-        previousStatus: input.previousStatus as PrismaLoanApplicationStatus,
-        newStatus: input.newStatus as PrismaLoanApplicationStatus,
-        approvedAmountMinor: input.approvedAmountMinor,
-        reason: input.reason,
-      },
+      await tx.loanDecisionAudit.create({
+        data: {
+          applicationId: params.audit.applicationId,
+          actorId: params.audit.actorId,
+          previousStatus: params.audit.previousStatus as PrismaLoanApplicationStatus,
+          newStatus: params.audit.newStatus as PrismaLoanApplicationStatus,
+          approvedAmountMinor: params.audit.approvedAmountMinor,
+          reason: params.audit.reason,
+        },
+      });
+
+      return tx.loanApplication.findUniqueOrThrow({ where: { id: params.applicationId } });
     });
+
+    return result === "CONFLICT" ? "CONFLICT" : toRecord(result);
   }
 }
