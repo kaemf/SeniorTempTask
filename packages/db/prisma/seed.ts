@@ -122,6 +122,23 @@ async function main() {
       monthlyIncomeMinor: 750_000,
     },
   });
+
+  // Every effective decision leaves an audit trail — including seeded ones.
+  // This records the proposal that put app-pending-confirmation into
+  // PENDING_CONFIRMATION, so the demo data satisfies the audit invariant.
+  await prisma.loanDecisionAudit.upsert({
+    where: { id: "audit-app-pending-confirmation-proposal" },
+    update: {},
+    create: {
+      id: "audit-app-pending-confirmation-proposal",
+      applicationId: "app-pending-confirmation",
+      actorId: "user-underwriter-1",
+      previousStatus: LoanApplicationStatus.PENDING_REVIEW,
+      newStatus: LoanApplicationStatus.PENDING_CONFIRMATION,
+      approvedAmountMinor: 1_500_000,
+      reason: "Seed fixture: high-value approval proposed, awaiting confirmation",
+    },
+  });
 }
 
 main()

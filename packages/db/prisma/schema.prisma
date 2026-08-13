@@ -34,7 +34,7 @@ model LoanApplication {
   requestedAmountMinor Int
   approvedAmountMinor  Int?
   proposedById         String?
-  proposedBy           User?                 @relation("ProposedDecisions", fields: [proposedById], references: [id])
+  proposedBy           User?                 @relation("ProposedDecisions", fields: [proposedById], references: [id], onDelete: Restrict)
   customerFullName     String
   customerLastName     String
   customerGender       String
@@ -46,6 +46,8 @@ model LoanApplication {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   decisions            LoanDecisionAudit[]
+
+  @@index([proposedById])
 }
 
 model LoanDecisionAudit {
